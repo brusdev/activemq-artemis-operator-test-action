@@ -17,6 +17,10 @@ inputs:
     description: 'The tests path'
     required: true
     default: 'test/...'
+  docker-images:
+    description: 'The docker images to load'
+    required: true
+    default: ''
   broker-name:
     description: 'The ActiveMQ Artemis Broker name'
     required: true
@@ -45,6 +49,11 @@ runs:
         git clone ${{ inputs.repository }} ${{ github.action_path }}/go/src/${{ inputs.module }}
         git -C ${{ github.action_path }}/go/src/${{ inputs.module }} checkout ${{ inputs.ref }}
       shell: bash
+    - name: Set up deploy directory
+      run: |
+        cp -r ${{ inputs.operator-deploy-path }} ${{ github.action_path }}/deploy
+        sed -i 's/imagePullPolicy:.*/imagePullPolicy: IfNotPresent/g' ${{ github.action_path }}/deploy/operator.yaml 
+      shell: bash
     - name: Install Ginkgo
       run: go get github.com/onsi/ginkgo/ginkgo
       shell: bash
@@ -53,6 +62,16 @@ runs:
       shell: bash
     - name: Set up Kubernetes cluster
       run: $(go env GOPATH)/bin/kind create cluster
+      shell: bash
+    - name: Load docker images
+      run: |
+        if [ -n "${{ inputs.docker-images }}" ]
+        then
+          for DOCKER_IMAGE in $(echo ${{ inputs.docker-images }} | sed "s/,/ /g")
+          do
+            $(go env GOPATH)/bin/kind load docker-image $DOCKER_IMAGE
+          done
+        fi
       shell: bash
     - name: Execute tests
       run: |
@@ -64,7 +83,7 @@ runs:
         -broker-image ${{ inputs.broker-image }} \
         -broker-image-second ${{ inputs.broker-update-image }} \
         -operator-image ${{ inputs.operator-image }} \
-        -repository ${{ inputs.operator-deploy-path }} \
+        -repository ${{ github.action_path }}/deploy \
         -v2 -debug-run 
       shell: bash
       working-directory: ${{ github.action_path }}/go/src/${{ inputs.module }}
